@@ -34,8 +34,6 @@ impl PngImage {
             Err(e) => return Err(PngError::InvalidChunkType),
         };
 
-        format!("byte array: {:?}", data);
-
         Ok(PngImage {
             width: 0,
             height: 0,
