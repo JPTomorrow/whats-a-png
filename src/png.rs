@@ -30,6 +30,7 @@ impl PngError {
 }
 
 pub struct PngImage {
+    pub info: PNGInfo,
     pub chunks: Vec<PNGChunk>,
 }
 
@@ -106,7 +107,10 @@ impl PngImage {
             Err(e) => return Err(e),
         };
 
-        Ok(PngImage { chunks })
+        Ok(PngImage {
+            info: png_info,
+            chunks: chunks,
+        })
     }
 
     fn get_png_info(header_chunk: &PNGChunk) -> Result<PNGInfo, PngError> {
@@ -120,23 +124,40 @@ impl PngImage {
 
         let mut width = [0; 4];
         let mut height = [0; 4];
+        let mut bit_depth = [0; 1];
+        let mut color_type = [0; 1];
+        let mut compression_method = [0; 1];
+        let mut filter_method = [0; 1];
+        let mut interlace_method = [0; 1];
         let res1 = data.read(&mut width);
         let res2 = data.read(&mut height);
+        let res3 = data.read(&mut bit_depth);
+        let res4 = data.read(&mut color_type);
+        let res5 = data.read(&mut compression_method);
+        let res6 = data.read(&mut filter_method);
+        let res7 = data.read(&mut interlace_method);
 
-        if res1.is_err() || res2.is_err() {
+        if res1.is_err()
+            || res2.is_err()
+            || res3.is_err()
+            || res4.is_err()
+            || res5.is_err()
+            || res6.is_err()
+            || res7.is_err()
+        {
             return Err(PngError::InvalidPngInfo(
-                "Could not read from header data buffer".to_string(),
+                "Could not read png info from header data buffer".to_string(),
             ));
         }
 
         Ok(PNGInfo {
             width: u32::from_be_bytes(width),
             height: u32::from_be_bytes(height),
-            bit_depth: 0,
-            color_type: 0,
-            compression_method: 0,
-            filter_method: 0,
-            interlace_method: 0,
+            bit_depth: bit_depth[0],
+            color_type: color_type[0],
+            compression_method: compression_method[0],
+            filter_method: filter_method[0],
+            interlace_method: interlace_method[0],
         })
     }
 
