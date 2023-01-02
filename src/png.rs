@@ -170,29 +170,23 @@ impl PngImage {
     }
 
     pub fn save_image(self: &Self, path: &str) -> Result<(), PngError> {
-        let res = File::create(path);
+        let mut file = match File::create(path) {
+            Ok(f) => f,
+            Err(_) => return Err(PngError::SaveOperationFailed),
+        };
 
-        if res.is_err() {
-            return Err(PngError::SaveOperationFailed);
-        }
-
-        let mut file = res.unwrap();
-
-        // write file type
-        file.write(&[137, 80, 78, 71, 13, 10, 26, 10]).unwrap();
-
+        let mut bytes: Vec<u8> = vec![137, 80, 78, 71, 13, 10, 26, 10];
         for chunk in &self.chunks {
-            let mut bytes: Vec<u8> = vec![137, 80, 78, 71, 13, 10, 26, 10];
             bytes.extend_from_slice(&chunk.size.to_be_bytes());
             bytes.extend_from_slice(&chunk.chunk_type.as_bytes());
             bytes.extend_from_slice(&chunk.data);
             bytes.extend_from_slice(&chunk.crc.to_be_bytes());
-
-            match file.write(&bytes) {
-                Ok(_) => (),
-                Err(_) => return Err(PngError::SaveOperationFailed),
-            };
         }
+
+        match file.write(&bytes) {
+            Ok(_) => (),
+            Err(_) => return Err(PngError::SaveOperationFailed),
+        };
 
         Ok(())
     }
