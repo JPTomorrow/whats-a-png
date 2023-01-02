@@ -11,6 +11,7 @@ pub enum PngError {
     CannotSkipChunk,
     InvalidChunkType(String),
     InvalidChunkCrc(String), // cyclic redundancy check
+    SaveOperationFailed,
     InvalidChunkSize,
 }
 
@@ -22,6 +23,7 @@ impl PngError {
             PngError::CannotSkipChunk => "Cannot skip chunk".to_string(),
             PngError::InvalidChunkType(s) => format!("Invalid chunk type: {}", s),
             PngError::InvalidChunkCrc(s) => format!("Invalid chunk crc: {}", s),
+            PngError::SaveOperationFailed => "Save operation failed".to_string(),
             PngError::InvalidChunkSize => "Invalid chunk size".to_string(),
         }
     }
@@ -168,16 +170,28 @@ impl PngImage {
     }
 
     pub fn save_image(self: &Self, path: &str) -> Result<(), PngError> {
-        let mut file = File::create(path).unwrap();
+        let res = File::create(path);
+
+        if res.is_err() {
+            return Err(PngError::SaveOperationFailed);
+        }
+
+        let mut file = res.unwrap();
 
         // write file type
         file.write(&[137, 80, 78, 71, 13, 10, 26, 10]).unwrap();
 
         for chunk in &self.chunks {
-            file.write(&chunk.size.to_be_bytes()).unwrap();
-            file.write(chunk.chunk_type.as_bytes()).unwrap();
-            file.write(&chunk.data).unwrap();
-            file.write(&chunk.crc.to_be_bytes()).unwrap();
+            let mut bytes: Vec<u8> = vec![137, 80, 78, 71, 13, 10, 26, 10];
+            bytes.extend_from_slice(&chunk.size.to_be_bytes());
+            bytes.extend_from_slice(&chunk.chunk_type.as_bytes());
+            bytes.extend_from_slice(&chunk.data);
+            bytes.extend_from_slice(&chunk.crc.to_be_bytes());
+
+            match file.write(&bytes) {
+                Ok(_) => (),
+                Err(_) => return Err(PngError::SaveOperationFailed),
+            };
         }
 
         Ok(())
@@ -232,5 +246,11 @@ mod tests {
         assert_eq!(image.chunks[1].crc, 0x177D762A);
         assert_eq!(image.chunks[2].crc, 0xAE426082);
         assert_eq!(image.chunks.len(), 3);
+    }
+
+    #[test]
+    fn test_save_image() {
+        let image = PngImage::new(IMAGE_PATH).unwrap();
+        image.save_image("./save_test/test_copy.png").unwrap();
     }
 }
