@@ -8,11 +8,11 @@ use std::{
 pub enum PngError {
     InvalidFileType,
     InvalidChunk,
-    CannotSkipChunk,
     InvalidChunkType(String),
     InvalidChunkCrc(String), // cyclic redundancy check
     SaveOperationFailed,
     InvalidChunkSize,
+    InvalidPngInfo(String),
 }
 
 impl PngError {
@@ -20,11 +20,11 @@ impl PngError {
         match self {
             PngError::InvalidFileType => "Invalid file type".to_string(),
             PngError::InvalidChunk => "Invalid chunk".to_string(),
-            PngError::CannotSkipChunk => "Cannot skip chunk".to_string(),
             PngError::InvalidChunkType(s) => format!("Invalid chunk type: {}", s),
             PngError::InvalidChunkCrc(s) => format!("Invalid chunk crc: {}", s),
             PngError::SaveOperationFailed => "Save operation failed".to_string(),
             PngError::InvalidChunkSize => "Invalid chunk size".to_string(),
+            PngError::InvalidPngInfo(s) => format!("Invalid png info: {}", s),
         }
     }
 }
@@ -40,6 +40,18 @@ pub struct PNGChunk {
     pub data: Vec<u8>,
     pub crc: u32,
 }
+
+pub struct PNGInfo {
+    pub width: u32,
+    pub height: u32,
+    pub bit_depth: u8,
+    pub color_type: u8,
+    pub compression_method: u8,
+    pub filter_method: u8,
+    pub interlace_method: u8,
+}
+
+const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 
 impl PngImage {
     pub fn new(path: &str) -> Result<Self, PngError> {
@@ -88,7 +100,44 @@ impl PngImage {
             chunks.push(chunk);
         }
 
+        // extract image properties from header chunk
+        let png_info = match Self::get_png_info(&chunks[0]) {
+            Ok(info) => info,
+            Err(e) => return Err(e),
+        };
+
         Ok(PngImage { chunks })
+    }
+
+    fn get_png_info(header_chunk: &PNGChunk) -> Result<PNGInfo, PngError> {
+        if header_chunk.chunk_type != "IHDR" {
+            return Err(PngError::InvalidPngInfo(
+                "Header chunk must be of type IHDR".to_string(),
+            ));
+        }
+
+        let mut data = Cursor::new(&header_chunk.data);
+
+        let mut width = [0; 4];
+        let mut height = [0; 4];
+        let res1 = data.read(&mut width);
+        let res2 = data.read(&mut height);
+
+        if res1.is_err() || res2.is_err() {
+            return Err(PngError::InvalidPngInfo(
+                "Could not read from header data buffer".to_string(),
+            ));
+        }
+
+        Ok(PNGInfo {
+            width: u32::from_be_bytes(width),
+            height: u32::from_be_bytes(height),
+            bit_depth: 0,
+            color_type: 0,
+            compression_method: 0,
+            filter_method: 0,
+            interlace_method: 0,
+        })
     }
 
     fn get_chunk_data(data: &mut Cursor<Vec<u8>>, size: u32) -> Result<Vec<u8>, PngError> {
@@ -153,7 +202,6 @@ impl PngImage {
             return Err(PngError::InvalidFileType);
         }
 
-        // check file type
         let mut file_type_bytes = [0; 8];
         let res = data.read(&mut file_type_bytes);
 
@@ -161,8 +209,7 @@ impl PngImage {
             return Err(PngError::InvalidFileType);
         }
 
-        // first 8 bytes of a PNG file specify that it is indeed a PNG file
-        if file_type_bytes != [137, 80, 78, 71, 13, 10, 26, 10] {
+        if file_type_bytes != PNG_SIGNATURE {
             return Err(PngError::InvalidFileType);
         }
 
@@ -175,7 +222,9 @@ impl PngImage {
             Err(_) => return Err(PngError::SaveOperationFailed),
         };
 
-        let mut bytes: Vec<u8> = vec![137, 80, 78, 71, 13, 10, 26, 10];
+        let mut bytes: Vec<u8> = vec![];
+        bytes.extend_from_slice(&PNG_SIGNATURE);
+
         for chunk in &self.chunks {
             bytes.extend_from_slice(&chunk.size.to_be_bytes());
             bytes.extend_from_slice(&chunk.chunk_type.as_bytes());
@@ -209,6 +258,7 @@ fn read_image_data(file_path: &str) -> Vec<u8> {
 mod tests {
     use super::*;
     const IMAGE_PATH: &str = "./test.png";
+    const SAVE_PATH: &str = "./save_test/test_copy.png";
 
     #[test]
     fn test_read_image_data() {
@@ -245,6 +295,6 @@ mod tests {
     #[test]
     fn test_save_image() {
         let image = PngImage::new(IMAGE_PATH).unwrap();
-        image.save_image("./save_test/test_copy.png").unwrap();
+        image.save_image(SAVE_PATH).unwrap();
     }
 }
