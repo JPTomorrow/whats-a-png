@@ -1,6 +1,11 @@
 [package]
-name = "basic-img-lib"
+name = "whats-a-png"
+description = "A simple PNG decoder written in Rust"
+readme = "README.md"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/JPTomorrow/whats-a-png"
+categories = ["multimedia::images"]
 
 [dependencies]
